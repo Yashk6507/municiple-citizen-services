@@ -1,0 +1,1054 @@
+const API_BASE = "";
+
+let authToken = null;
+let currentUser = null;
+let complaintMap = null;
+let complaintMarker = null;
+let trendChart = null;
+let homeTrendChart = null;
+
+function ensureChartJS(cb) {
+  if (typeof window.Chart !== "undefined") {
+    cb();
+    return;
+  }
+  const script = document.createElement("script");
+  script.src =
+    "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js";
+  script.crossOrigin = "anonymous";
+  script.onload = cb;
+  document.head.appendChild(script);
+}
+
+function showToast(message) {
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.textContent = message;
+  document.body.appendChild(t);
+  setTimeout(() => {
+    if (t.parentNode) t.parentNode.removeChild(t);
+  }, 2000);
+}
+
+function setButtonBusy(btn, busy, busyText, normalText) {
+  if (!btn) return;
+  btn.disabled = !!busy;
+  if (busy) {
+    btn.dataset.prevText = btn.textContent;
+    btn.textContent = busyText || "Please wait…";
+  } else {
+    btn.textContent = normalText || btn.dataset.prevText || btn.textContent;
+  }
+}
+
+function setAuth(token, user) {
+  authToken = token;
+  currentUser = user;
+  if (token && user) {
+    localStorage.setItem(
+      "municipal_auth",
+      JSON.stringify({ token, user })
+    );
+  } else {
+    localStorage.removeItem("municipal_auth");
+  }
+}
+
+function loadAuth() {
+  const raw = localStorage.getItem("municipal_auth");
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw);
+    authToken = parsed.token;
+    currentUser = parsed.user;
+  } catch {
+    authToken = null;
+    currentUser = null;
+  }
+}
+
+function apiFetch(path, options = {}) {
+  const headers = options.headers || {};
+  if (!(options.body instanceof FormData)) {
+    headers["Content-Type"] =
+      headers["Content-Type"] || "application/json";
+  }
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+  return fetch(API_BASE + path, {
+    ...options,
+    headers,
+  }).then(async (res) => {
+    const text = await res.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = {};
+    }
+    if (!res.ok) {
+      const error = (data && data.error) || res.statusText;
+      throw new Error(error);
+    }
+    return data;
+  });
+}
+
+function showSection(id) {
+  document
+    .querySelectorAll(".section")
+    .forEach((s) => s.classList.remove("visible"));
+  const section = document.getElementById(id);
+  if (section) {
+    section.classList.add("visible");
+  }
+}
+
+function setActiveNav(key) {
+  document
+    .querySelectorAll(".nav-link")
+    .forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.nav === key);
+    });
+}
+
+function updateLandingStatsFromAdmin(stats) {
+  const total =
+    stats.byStatus?.reduce((sum, s) => sum + Number(s.count || 0), 0) ||
+    0;
+  const pending =
+    stats.byStatus?.find((s) => s.status === "Pending")?.count || 0;
+  const resolved =
+    stats.byStatus?.find((s) => s.status === "Resolved")?.count || 0;
+  document.getElementById("stat-total").textContent = total;
+  document.getElementById("stat-pending").textContent = pending;
+  document.getElementById("stat-resolved").textContent = resolved;
+}
+
+function mapStatusToClass(status) {
+  if (status === "In Progress") return "status-in-progress";
+  if (status === "Resolved") return "status-resolved";
+  return "status-pending";
+}
+
+function formatDate(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString();
+}
+
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove("hidden");
+}
+
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add("hidden");
+}
+
+function ensureComplaintMap() {
+  const setup = () => {
+    if (complaintMap) {
+      setTimeout(() => complaintMap.invalidateSize(), 50);
+      return;
+    }
+    const mapEl = document.getElementById("complaint-map");
+    if (!mapEl) return;
+    complaintMap = L.map(mapEl).setView([20.5937, 78.9629], 5);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(complaintMap);
+
+    complaintMap.on("click", (e) => {
+      setComplaintLocation(e.latlng.lat, e.latlng.lng);
+    });
+
+    if (navigator.geolocation && (location.protocol === "https:" || location.hostname === "localhost")) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          complaintMap.setView([latitude, longitude], 14);
+          setComplaintLocation(latitude, longitude);
+        },
+        () => {}
+      );
+    }
+  };
+  if (typeof window.L === "undefined") {
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.crossOrigin = "";
+    script.onload = setup;
+    document.head.appendChild(script);
+  } else {
+    setup();
+  }
+}
+
+function setComplaintLocation(lat, lng) {
+  const latInput = document.getElementById("complaint-latitude");
+  const lngInput = document.getElementById("complaint-longitude");
+  if (!latInput || !lngInput) return;
+  latInput.value = lat.toFixed(6);
+  lngInput.value = lng.toFixed(6);
+  if (!complaintMap) return;
+  if (!complaintMarker) {
+    complaintMarker = L.marker([lat, lng]).addTo(complaintMap);
+  } else {
+    complaintMarker.setLatLng([lat, lng]);
+  }
+}
+
+function renderUserDashboard() {
+  if (!currentUser) return;
+  const greeting = document.getElementById("user-greeting");
+  greeting.textContent = `Logged in as ${currentUser.name} (${currentUser.email})`;
+  showSection("user-dashboard-section");
+  setActiveNav("");
+  loadUserComplaints();
+  loadUserNotifications();
+}
+
+function renderAdminDashboard() {
+  if (!currentUser) return;
+  const greeting = document.getElementById("admin-greeting");
+  greeting.textContent = `Logged in as ${currentUser.name} (${currentUser.email})`;
+  showSection("admin-dashboard-section");
+  setActiveNav("");
+  loadAdminComplaints();
+  loadAdminUsers();
+  loadAdminStats();
+}
+
+function loadPublicOverview() {
+  const totalEl = document.getElementById("stat-total");
+  const pendingEl = document.getElementById("stat-pending");
+  const resolvedEl = document.getElementById("stat-resolved");
+  if (totalEl) totalEl.textContent = "Loading…";
+  if (pendingEl) pendingEl.textContent = "…";
+  if (resolvedEl) resolvedEl.textContent = "…";
+  const list = document.getElementById("home-resolved-list");
+  if (list) {
+    list.innerHTML = `<li class="loading-text">Loading recent resolved…</li>`;
+  }
+  apiFetch("/api/public/overview")
+    .then((data) => {
+      const total =
+        data.byStatus?.reduce((sum, s) => sum + Number(s.count || 0), 0) ||
+        0;
+      const pending =
+        data.byStatus?.find((s) => s.status === "Pending")?.count || 0;
+      const resolved =
+        data.byStatus?.find((s) => s.status === "Resolved")?.count || 0;
+      if (totalEl) totalEl.textContent = total;
+      if (pendingEl) pendingEl.textContent = pending;
+      if (resolvedEl) resolvedEl.textContent = resolved;
+
+      if (list) {
+        list.innerHTML = "";
+        if (!data.recentResolved || data.recentResolved.length === 0) {
+          const li = document.createElement("li");
+          li.className = "empty-state";
+          li.textContent = "No resolved complaints yet.";
+          list.appendChild(li);
+        }
+        (data.recentResolved || []).forEach((c) => {
+          const li = document.createElement("li");
+          const imgSrc = c.image_path || "";
+          const thumb = imgSrc
+            ? `<img class="resolved-thumb" src="${c.image_path}" alt="${c.category}"/>`
+            : `<div class="resolved-thumb"></div>`;
+          const titleText =
+            c.location_text && c.location_text.trim().length > 0
+              ? `${c.category} • ${c.location_text}`
+              : `${c.category}`;
+          const desc =
+            c.description && c.description.length > 100
+              ? c.description.slice(0, 100) + "…"
+              : c.description || "";
+          li.innerHTML = `
+            ${thumb}
+            <div>
+              <div class="resolved-title">${titleText}</div>
+              <div class="resolved-meta">
+                <span class="category-badge">${c.category}</span>
+                <span>${formatDate(c.updated_at)}</span>
+              </div>
+              <div>${desc}</div>
+            </div>
+          `;
+          list.appendChild(li);
+        });
+      }
+
+      const ctx = document.getElementById("home-trend-chart");
+      ensureChartJS(() => {
+        if (ctx) {
+          const labels = [...new Set([...(data.byMonthTotal || []), ...(data.byMonthResolved || [])].map(r => r.month))].sort();
+          const totalsMap = new Map((data.byMonthTotal || []).map(r => [r.month, r.count]));
+          const resolvedMap = new Map((data.byMonthResolved || []).map(r => [r.month, r.count]));
+          const totalSeries = labels.map(m => Number(totalsMap.get(m) || 0));
+          const resolvedSeries = labels.map(m => Number(resolvedMap.get(m) || 0));
+          if (homeTrendChart) {
+            homeTrendChart.data.labels = labels;
+            homeTrendChart.data.datasets[0].data = totalSeries;
+            homeTrendChart.data.datasets[1].data = resolvedSeries;
+            homeTrendChart.update();
+          } else {
+            homeTrendChart = new Chart(ctx, {
+              type: "line",
+              data: {
+                labels,
+                datasets: [
+                  {
+                    label: "Total complaints",
+                    data: totalSeries,
+                    borderColor: "#0b3d91",
+                    backgroundColor: "rgba(11, 61, 145, 0.08)",
+                    tension: 0.2,
+                  },
+                  {
+                    label: "Resolved complaints",
+                    data: resolvedSeries,
+                    borderColor: "#16a34a",
+                    backgroundColor: "rgba(22, 163, 74, 0.08)",
+                    tension: 0.2,
+                  },
+                ],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    ticks: { precision: 0 },
+                  },
+                },
+              },
+            });
+          }
+          if (!labels.length) {
+            const empty = document.createElement("div");
+            empty.className = "empty-state";
+            empty.textContent = "No data yet.";
+            ctx.parentNode.appendChild(empty);
+          }
+        }
+      });
+    })
+    .catch(() => {});
+}
+
+function loadUserComplaints() {
+  const tbody = document.getElementById("user-complaints-body");
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="5" class="loading-text">Loading… Please wait</td></tr>`;
+  }
+  const status = document.getElementById("user-filter-status").value;
+  const category = document.getElementById("user-filter-category").value;
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (category) params.set("category", category);
+
+  apiFetch(`/api/complaints?${params.toString()}`)
+    .then((rows) => {
+      tbody.innerHTML = "";
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-state">No complaints yet.</td></tr>`;
+      }
+      rows.forEach((c) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${c.id}</td>
+          <td>${c.category}</td>
+          <td>${c.description.substring(0, 60)}${
+          c.description.length > 60 ? "…" : ""
+        }</td>
+          <td>
+            <span class="status-tag ${mapStatusToClass(c.status)}">
+              ${c.status}
+            </span>
+          </td>
+          <td>${formatDate(c.created_at)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    })
+    .catch((err) => {
+      console.error(err);
+    });
+}
+
+function loadUserNotifications() {
+  const list = document.getElementById("user-notifications");
+  if (list) list.innerHTML = `<li class="loading-text">Loading…</li>`;
+  apiFetch("/api/notifications")
+    .then((rows) => {
+      list.innerHTML = "";
+      if (!rows.length) {
+        const li = document.createElement("li");
+        li.className = "empty-state";
+        li.textContent = "No notifications.";
+        list.appendChild(li);
+      }
+      rows.forEach((n) => {
+        const li = document.createElement("li");
+        li.className = n.is_read ? "" : "unread";
+        li.textContent = `${formatDate(n.created_at)} - ${n.message}`;
+        li.addEventListener("click", () => {
+          if (n.is_read) return;
+          apiFetch(`/api/notifications/${n.id}/read`, {
+            method: "POST",
+          })
+            .then(() => {
+              li.classList.remove("unread");
+            })
+            .catch(() => {});
+        });
+        list.appendChild(li);
+      });
+    })
+    .catch((err) => {
+      console.error(err);
+    });
+}
+
+function loadAdminComplaints() {
+  const tbody = document.getElementById("admin-complaints-body");
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="6" class="loading-text">Loading…</td></tr>`;
+  }
+  const status = document.getElementById("admin-filter-status").value;
+  const category = document.getElementById("admin-filter-category").value;
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (category) params.set("category", category);
+
+  apiFetch(`/api/complaints?${params.toString()}`)
+    .then((rows) => {
+      tbody.innerHTML = "";
+      if (!rows.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="empty-state">No complaints found.</td></tr>`;
+      }
+      rows.forEach((c) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${c.id}</td>
+          <td>${c.category}</td>
+          <td>${c.user_name}</td>
+          <td>
+            <span class="status-tag ${mapStatusToClass(c.status)}">
+              ${c.status}
+            </span>
+          </td>
+          <td>${c.location_text || ""}</td>
+          <td>${c.assigned_to || ""}</td>
+          <td>
+            <div class="inline-actions">
+              <button class="action-btn action-pending" data-action="Pending">Pending</button>
+              <button class="action-btn action-progress" data-action="In Progress">In Progress</button>
+              <button class="action-btn action-resolved" data-action="Resolved">Resolve</button>
+            </div>
+          </td>
+        `;
+        const actions = tr.querySelectorAll(".inline-actions .action-btn");
+        actions.forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const newStatus = btn.getAttribute("data-action");
+            apiFetch(`/api/complaints/${c.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({
+                status: newStatus,
+                assigned_to: c.assigned_to || "",
+                admin_remarks: c.admin_remarks || "",
+              }),
+            })
+              .then(() => {
+                loadAdminComplaints();
+                loadAdminStats();
+                showToast(`Marked ${newStatus}`);
+              })
+              .catch((err) => {
+                console.error(err);
+              });
+          });
+        });
+        tr.addEventListener("click", () => openAdminComplaint(c.id));
+        tbody.appendChild(tr);
+      });
+    })
+    .catch((err) => {
+      console.error(err);
+    });
+}
+
+function loadAdminUsers() {
+  apiFetch("/api/users")
+    .then((rows) => {
+      const tbody = document.getElementById("admin-users-body");
+      tbody.innerHTML = "";
+      rows.forEach((u) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${u.id}</td>
+          <td>${u.name}</td>
+          <td>${u.email}</td>
+          <td>
+            <span class="badge ${u.role === "admin" ? "badge-admin" : ""}">
+              ${u.role}
+            </span>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    })
+    .catch((err) => {
+      console.error(err);
+    });
+}
+
+function loadAdminStats() {
+  apiFetch("/api/complaints/stats")
+    .then((stats) => {
+      const total =
+        stats.byStatus?.reduce(
+          (sum, s) => sum + Number(s.count || 0),
+          0
+        ) || 0;
+      const pending =
+        stats.byStatus?.find((s) => s.status === "Pending")?.count || 0;
+      const inProgress =
+        stats.byStatus?.find((s) => s.status === "In Progress")?.count ||
+        0;
+      const resolved =
+        stats.byStatus?.find((s) => s.status === "Resolved")?.count || 0;
+
+      document.getElementById("admin-total").textContent = total;
+      document.getElementById("admin-pending").textContent = pending;
+      document.getElementById("admin-in-progress").textContent =
+        inProgress;
+      document.getElementById("admin-resolved").textContent = resolved;
+
+      updateLandingStatsFromAdmin(stats);
+
+      const ctx = document.getElementById("trend-chart");
+      ensureChartJS(() => {
+        if (!ctx) return;
+        const labels = stats.byMonth.map((r) => r.month);
+        const counts = stats.byMonth.map((r) => r.count);
+        if (trendChart) {
+          trendChart.data.labels = labels;
+          trendChart.data.datasets[0].data = counts;
+          trendChart.update();
+        } else {
+          trendChart = new Chart(ctx, {
+            type: "line",
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: "Complaints per month",
+                  data: counts,
+                  borderColor: "#0b3d91",
+                  backgroundColor: "rgba(11, 61, 145, 0.1)",
+                  tension: 0.2,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  ticks: {
+                    precision: 0,
+                  },
+                },
+              },
+            },
+          });
+        }
+        if (!labels.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty-state";
+          empty.textContent = "No data yet.";
+          ctx.parentNode.appendChild(empty);
+        }
+      });
+    })
+    .catch((err) => {
+      console.error(err);
+    });
+}
+
+function openAdminComplaint(id) {
+  apiFetch(`/api/complaints/${id}`)
+    .then((c) => {
+      const body = document.getElementById("admin-complaint-body");
+      body.innerHTML = "";
+      const wrapper = document.createElement("div");
+      wrapper.className = "detail-grid";
+
+      const left = document.createElement("div");
+      left.className = "detail-section";
+      left.innerHTML = `
+        <h4>Complaint #${c.id}</h4>
+        <div class="detail-field">
+          <span class="detail-label">Citizen:</span>
+          <span> ${c.user_name} (${c.user_email})</span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Category:</span>
+          <span> ${c.category}</span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Status:</span>
+          <span class="status-tag ${mapStatusToClass(c.status)}">
+            ${c.status}
+          </span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Description:</span>
+          <div>${c.description}</div>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Location:</span>
+          <div>${c.location_text || ""}</div>
+          <div>Lat: ${c.latitude || "-"}, Lng: ${c.longitude || "-"}</div>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Created:</span>
+          <span> ${formatDate(c.created_at)}</span>
+        </div>
+        <div class="detail-field">
+          <span class="detail-label">Last Updated:</span>
+          <span> ${formatDate(c.updated_at)}</span>
+        </div>
+        ${
+          c.image_path
+            ? `<div class="detail-field">
+                 <span class="detail-label">Image:</span>
+                 <div><img src="${c.image_path}" class="detail-image" alt="Complaint image" /></div>
+               </div>`
+            : ""
+        }
+      `;
+
+      const right = document.createElement("div");
+      right.className = "detail-section";
+      right.innerHTML = `
+        <h4>Administrative Actions</h4>
+        <form id="admin-complaint-form">
+          <div class="admin-form-group">
+            <label>Status</label>
+            <select id="admin-status">
+              <option value="Pending" ${
+                c.status === "Pending" ? "selected" : ""
+              }>Pending</option>
+              <option value="In Progress" ${
+                c.status === "In Progress" ? "selected" : ""
+              }>In Progress</option>
+              <option value="Resolved" ${
+                c.status === "Resolved" ? "selected" : ""
+              }>Resolved</option>
+            </select>
+          </div>
+          <div class="admin-form-group">
+            <label>Assign to staff</label>
+            <input id="admin-assigned-to" type="text" value="${
+              c.assigned_to || ""
+            }" />
+          </div>
+          <div class="admin-form-group">
+            <label>Remarks</label>
+            <textarea id="admin-remarks">${
+              c.admin_remarks || ""
+            }</textarea>
+          </div>
+          <button type="submit" class="primary block">Save Changes</button>
+          <button type="button" id="admin-mark-resolved" class="secondary block" style="margin-top:0.4rem;">Mark as Resolved</button>
+        </form>
+        <div id="admin-complaint-error" class="error-message"></div>
+        <h4>Map</h4>
+        <div id="admin-detail-map"></div>
+      `;
+
+      wrapper.appendChild(left);
+      wrapper.appendChild(right);
+      body.appendChild(wrapper);
+
+      const form = document.getElementById("admin-complaint-form");
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const status = document.getElementById("admin-status").value;
+        const assignedTo =
+          document.getElementById("admin-assigned-to").value;
+        const remarks = document.getElementById("admin-remarks").value;
+        apiFetch(`/api/complaints/${c.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status,
+            assigned_to: assignedTo,
+            admin_remarks: remarks,
+          }),
+        })
+          .then(() => {
+            document.getElementById(
+              "admin-complaint-error"
+            ).textContent = "";
+            loadAdminComplaints();
+            loadAdminStats();
+            loadUserNotifications();
+            closeModal("admin-complaint-modal");
+          })
+          .catch((err) => {
+            document.getElementById(
+              "admin-complaint-error"
+            ).textContent = err.message;
+          });
+      });
+      const markResolvedBtn = document.getElementById("admin-mark-resolved");
+      if (markResolvedBtn) {
+        markResolvedBtn.addEventListener("click", () => {
+          const assignedTo =
+            document.getElementById("admin-assigned-to").value;
+          const remarks = document.getElementById("admin-remarks").value;
+          apiFetch(`/api/complaints/${c.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              status: "Resolved",
+              assigned_to: assignedTo,
+              admin_remarks: remarks,
+            }),
+          })
+            .then(() => {
+              loadAdminComplaints();
+              loadAdminStats();
+              closeModal("admin-complaint-modal");
+              showToast("Marked as Resolved");
+            })
+            .catch((err) => {
+              document.getElementById("admin-complaint-error").textContent =
+                err.message || "Failed to mark resolved";
+            });
+        });
+      }
+
+      const { latitude, longitude } = c;
+      const mapEl = document.getElementById("admin-detail-map");
+      if (mapEl && latitude && longitude) {
+        const map = L.map(mapEl).setView([latitude, longitude], 15);
+        L.tileLayer(
+          "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          {
+            maxZoom: 19,
+            attribution: "&copy; OpenStreetMap contributors",
+          }
+        ).addTo(map);
+        L.marker([latitude, longitude]).addTo(map);
+        setTimeout(() => map.invalidateSize(), 50);
+      }
+
+      openModal("admin-complaint-modal");
+    })
+    .catch((err) => {
+      console.error(err);
+    });
+}
+
+function initAuthAndRouting() {
+  loadAuth();
+
+  document.querySelectorAll(".nav-link").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.nav;
+      setActiveNav(key);
+      if (key === "home") {
+        showSection("home-section");
+        loadPublicOverview();
+      }
+      if (key === "login") showSection("login-section");
+      if (key === "admin-login") showSection("admin-login-section");
+      if (key === "register") showSection("register-section");
+      if (key === "track") showSection("track-section");
+      if (key === "contact") showSection("contact-section");
+    });
+  });
+
+  document
+    .getElementById("hero-report-btn")
+    .addEventListener("click", () => {
+      if (currentUser && currentUser.role === "user") {
+        renderUserDashboard();
+        openComplaintModal();
+      } else {
+        setActiveNav("login");
+        showSection("login-section");
+      }
+    });
+
+  document
+    .getElementById("hero-track-btn")
+    .addEventListener("click", () => {
+      setActiveNav("track");
+      showSection("track-section");
+    });
+
+  document
+    .getElementById("track-login-btn")
+    .addEventListener("click", () => {
+      setActiveNav("login");
+      showSection("login-section");
+    });
+
+  document
+    .getElementById("user-new-complaint-btn")
+    .addEventListener("click", openComplaintModal);
+
+  document
+    .getElementById("user-logout-btn")
+    .addEventListener("click", () => {
+      setAuth(null, null);
+      setActiveNav("home");
+      showSection("home-section");
+      loadPublicOverview();
+    });
+
+  document
+    .getElementById("admin-logout-btn")
+    .addEventListener("click", () => {
+      setAuth(null, null);
+      setActiveNav("home");
+      showSection("home-section");
+      loadPublicOverview();
+    });
+
+  document
+    .getElementById("user-filter-status")
+    .addEventListener("change", loadUserComplaints);
+  document
+    .getElementById("user-filter-category")
+    .addEventListener("change", loadUserComplaints);
+  document
+    .getElementById("user-refresh-btn")
+    .addEventListener("click", loadUserComplaints);
+
+  document
+    .getElementById("admin-filter-status")
+    .addEventListener("change", loadAdminComplaints);
+  document
+    .getElementById("admin-filter-category")
+    .addEventListener("change", loadAdminComplaints);
+  document
+    .getElementById("admin-refresh-btn")
+    .addEventListener("click", loadAdminComplaints);
+
+  document
+    .getElementById("complaint-modal-close")
+    .addEventListener("click", () => closeModal("complaint-modal"));
+  document
+    .getElementById("admin-complaint-close")
+    .addEventListener("click", () =>
+      closeModal("admin-complaint-modal")
+    );
+
+  if (currentUser) {
+    if (currentUser.role === "admin") {
+      renderAdminDashboard();
+    } else {
+      renderUserDashboard();
+    }
+  } else {
+    setActiveNav("home");
+    showSection("home-section");
+    loadPublicOverview();
+  }
+}
+
+function openComplaintModal() {
+  document.getElementById("complaint-form").reset();
+  document.getElementById("complaint-error").textContent = "";
+  document.getElementById("complaint-latitude").value = "";
+  document.getElementById("complaint-longitude").value = "";
+  openModal("complaint-modal");
+  ensureComplaintMap();
+  const useBtn = document.getElementById("use-current-location");
+  if (useBtn) {
+    useBtn.onclick = () => {
+      if (!navigator.geolocation) {
+        if (typeof showToast === "function") showToast("Geolocation not available");
+        return;
+      }
+      if (location.protocol !== "https:" && location.hostname !== "localhost") {
+        if (typeof showToast === "function") showToast("Requires HTTPS or localhost");
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          if (complaintMap) {
+            complaintMap.setView([latitude, longitude], 15);
+          }
+          setComplaintLocation(latitude, longitude);
+        },
+        () => {
+          if (typeof showToast === "function") showToast("Could not get your location");
+        }
+      );
+    };
+  }
+}
+
+function initForms() {
+  const loginForm = document.getElementById("login-form");
+  loginForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const email = document.getElementById("login-email").value.trim();
+    const password = document
+      .getElementById("login-password")
+      .value.trim();
+    const btn = loginForm.querySelector("button[type='submit']");
+    setButtonBusy(btn, true, "Logging in… Please wait");
+    document.getElementById("login-error").textContent = "";
+    apiFetch("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    })
+      .then((res) => {
+        setAuth(res.token, res.user);
+        showToast("Thanks! Redirecting…");
+        if (res.user.role === "admin") {
+          renderAdminDashboard();
+          loadAdminStats();
+        } else {
+          renderUserDashboard();
+        }
+      })
+      .catch((err) => {
+        document.getElementById("login-error").textContent =
+          err.message || "Login failed";
+      })
+      .finally(() => setButtonBusy(btn, false));
+  });
+
+  const regForm = document.getElementById("register-form");
+  regForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = document.getElementById("reg-name").value.trim();
+    const email = document.getElementById("reg-email").value.trim();
+    const password = document
+      .getElementById("reg-password")
+      .value.trim();
+    const btn = regForm.querySelector("button[type='submit']");
+    setButtonBusy(btn, true, "Registering… Please wait");
+    document.getElementById("register-error").textContent = "";
+    apiFetch("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ name, email, password }),
+    })
+      .then((res) => {
+        setAuth(res.token, res.user);
+        showToast("Thanks for registering!");
+        renderUserDashboard();
+      })
+      .catch((err) => {
+        document.getElementById("register-error").textContent =
+          err.message || "Registration failed";
+      })
+      .finally(() => setButtonBusy(btn, false));
+  });
+
+  const adminLoginForm = document.getElementById("admin-login-form");
+  if (adminLoginForm) {
+    adminLoginForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const email = document.getElementById("admin-email").value.trim();
+      const password = document
+        .getElementById("admin-password")
+        .value.trim();
+      const btn = adminLoginForm.querySelector("button[type='submit']");
+      setButtonBusy(btn, true, "Logging in… Please wait");
+      document.getElementById("admin-login-error").textContent = "";
+      apiFetch("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      })
+        .then((res) => {
+          if (res.user.role !== "admin") {
+            throw new Error("This account is not an administrator");
+          }
+          setAuth(res.token, res.user);
+          showToast("Thanks! Redirecting…");
+          renderAdminDashboard();
+          loadAdminStats();
+        })
+        .catch((err) => {
+          document.getElementById("admin-login-error").textContent =
+            err.message || "Admin login failed";
+        })
+        .finally(() => setButtonBusy(btn, false));
+    });
+  }
+
+  const complaintForm = document.getElementById("complaint-form");
+  complaintForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const category = document.getElementById(
+      "complaint-category"
+    ).value;
+    const description = document.getElementById(
+      "complaint-description"
+    ).value;
+    const image = document.getElementById("complaint-image").files[0];
+    const locationText = document.getElementById(
+      "complaint-location-text"
+    ).value;
+    const latitude =
+      document.getElementById("complaint-latitude").value || "";
+    const longitude =
+      document.getElementById("complaint-longitude").value || "";
+
+    const formData = new FormData();
+    formData.append("category", category);
+    formData.append("description", description);
+    formData.append("location_text", locationText);
+    if (latitude) formData.append("latitude", latitude);
+    if (longitude) formData.append("longitude", longitude);
+    if (image) formData.append("image", image);
+
+    document.getElementById("complaint-error").textContent = "";
+    const btn = complaintForm.querySelector("button[type='submit']");
+    setButtonBusy(btn, true, "Submitting… Please wait");
+
+    apiFetch("/api/complaints", {
+      method: "POST",
+      body: formData,
+      headers: {},
+    })
+      .then(() => {
+        closeModal("complaint-modal");
+        showToast("Thanks! Complaint submitted.");
+        if (currentUser && currentUser.role === "user") {
+          loadUserComplaints();
+          loadUserNotifications();
+        }
+      })
+      .catch((err) => {
+        document.getElementById("complaint-error").textContent =
+          err.message || "Failed to submit complaint";
+      })
+      .finally(() => setButtonBusy(btn, false));
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  initAuthAndRouting();
+  initForms();
+});

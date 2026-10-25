@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Municipal Civic Issue Reporting Portal</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIJ5HIt2rA7Wv5pI1l8LhWjvZXY0h38="
+      crossorigin=""
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
+      integrity="sha256-4QyOxaqe6hyoN7JGOzEya0uTcoAH6euJP6GAtQI5MSg="
+      crossorigin="anonymous"
+    ></script>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="gov-header">
+      <div class="gov-ribbon"></div>
+      <div class="container header-inner">
+        <div class="branding">
+          <div class="emblem"></div>
+          <div>
+            <div class="gov-title">Municipal Corporation</div>
+            <div class="gov-subtitle">
+              Civic Issue Reporting &amp; Resolution Portal
+            </div>
+          </div>
+        </div>
+        <nav class="main-nav">
+          <button data-nav="home" class="nav-link active">Home</button>
+          <button data-nav="track" class="nav-link">Track Complaints</button>
+          <button data-nav="login" class="nav-link">Citizen Login</button>
+          <button data-nav="admin-login" class="nav-link">Admin Login</button>
+          <button data-nav="register" class="nav-link">Register</button>
+          <button data-nav="contact" class="nav-link">Contact</button>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section id="home-section" class="section visible">
+        <div class="hero">
+          <div class="hero-text">
+            <h1>Report Civic Issues. Help Keep Your City Working.</h1>
+            <p>
+              Use this official municipal portal to report problems such as
+              garbage, potholes, water leakages, and streetlight failures. Track
+              the status of your complaints in real time and receive
+              notifications as they are resolved.
+            </p>
+            <div class="hero-actions">
+              <button id="hero-report-btn" class="primary">
+                Submit a Complaint
+              </button>
+              <button id="hero-track-btn" class="secondary">
+                Track Existing Complaints
+              </button>
+            </div>
+          </div>
+          <div class="hero-stats">
+            <div class="stat-card">
+              <div class="stat-label">Total Complaints</div>
+              <div id="stat-total" class="stat-value">-</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Pending</div>
+              <div id="stat-pending" class="stat-value">-</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Resolved</div>
+              <div id="stat-resolved" class="stat-value">-</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-card">
+            <div class="info-icon" aria-hidden="true">
+              <svg viewBox="0 0 64 64" fill="currentColor">
+                <rect x="8" y="8" width="48" height="32" rx="3"></rect>
+                <rect x="4" y="44" width="56" height="8" rx="2"></rect>
+                <rect x="12" y="14" width="40" height="20" fill="#ffffff"></rect>
+              </svg>
+            </div>
+            <h2>Transparent Governance</h2>
+            <p>
+              Track each complaint from registration to resolution with clear
+              status updates and remarks from municipal officials.
+            </p>
+          </div>
+          <div class="info-card">
+            <div class="info-icon" aria-hidden="true">
+              <svg viewBox="0 0 64 64" fill="currentColor">
+                <circle cx="32" cy="22" r="8"></circle>
+                <path d="M32 30c-10 0-18 6-18 14 0 2 2 4 4 4h28c2 0 4-2 4-4 0-8-8-14-18-14z" opacity="0.15"></path>
+                <path d="M32 6c-9.94 0-18 8.06-18 18 0 12 18 34 18 34s18-22 18-34c0-9.94-8.06-18-18-18z" fill="none" stroke="currentColor" stroke-width="2"></path>
+                <circle cx="32" cy="24" r="6" fill="#ffffff"></circle>
+              </svg>
+            </div>
+            <h2>Map-Based Reporting</h2>
+            <p>
+              Pinpoint exact locations of issues using an interactive map for
+              faster and more precise redressal.
+            </p>
+          </div>
+          <div class="info-card">
+            <div class="info-icon" aria-hidden="true">
+              <svg viewBox="0 0 64 64" fill="currentColor">
+                <circle cx="32" cy="20" r="10"></circle>
+                <path d="M12 54c0-11 9-20 20-20s20 9 20 20" fill="none" stroke="currentColor" stroke-width="2"></path>
+                <path d="M24 12h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.25"></path>
+              </svg>
+            </div>
+            <h2>Citizen-Centric Design</h2>
+            <p>
+              Simple forms, mobile-friendly screens, and notifications keep you
+              informed at every step.
+            </p>
+          </div>
+        </div>
+
+        <div class="home-grid">
+          <div class="card">
+            <div class="card-header">
+              <h3>Recently Resolved Complaints</h3>
+            </div>
+            <ul id="home-resolved-list" class="resolved-list"></ul>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h3>Public Data Tracker</h3>
+            </div>
+            <div class="chart-wrapper">
+              <canvas id="home-trend-chart"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="admin-login-section" class="section">
+        <div class="card auth-card">
+          <h2>Admin Login</h2>
+          <p class="muted">
+            Authorized personnel only. Use your official administrator credentials.
+          </p>
+          <form id="admin-login-form">
+            <div class="form-group">
+              <label for="admin-email">Email</label>
+              <input id="admin-email" type="email" required />
+            </div>
+            <div class="form-group">
+              <label for="admin-password">Password</label>
+              <input id="admin-password" type="password" required />
+            </div>
+            <button type="submit" class="primary block">Login as Admin</button>
+          </form>
+          <div class="form-footer">
+            <span class="muted">Default admin:</span>
+            <span class="mono">admin@municipal.local / Admin@123</span>
+          </div>
+          <div id="admin-login-error" class="error-message"></div>
+        </div>
+      </section>
+
+      <section id="login-section" class="section">
+        <div class="card auth-card">
+          <h2>Login</h2>
+          <p class="muted">
+            Citizens and municipal staff can log in using their registered email
+            address.
+          </p>
+          <form id="login-form">
+            <div class="form-group">
+              <label for="login-email">Email</label>
+              <input id="login-email" type="email" required />
+            </div>
+            <div class="form-group">
+              <label for="login-password">Password</label>
+              <input id="login-password" type="password" required />
+            </div>
+            <button type="submit" class="primary block">Login</button>
+          </form>
+          <div class="form-footer">
+            <span class="muted">Default admin:</span>
+            <span class="mono">admin@municipal.local / Admin@123</span>
+          </div>
+          <div id="login-error" class="error-message"></div>
+        </div>
+      </section>
+
+      <section id="register-section" class="section">
+        <div class="card auth-card">
+          <h2>Citizen Registration</h2>
+          <p class="muted">
+            Create an account to submit and track civic complaints.
+          </p>
+          <form id="register-form">
+            <div class="form-group">
+              <label for="reg-name">Full Name</label>
+              <input id="reg-name" type="text" required />
+            </div>
+            <div class="form-group">
+              <label for="reg-email">Email</label>
+              <input id="reg-email" type="email" required />
+            </div>
+            <div class="form-group">
+              <label for="reg-password">Password</label>
+              <input
+                id="reg-password"
+                type="password"
+                minlength="6"
+                required
+              />
+            </div>
+            <button type="submit" class="primary block">Register</button>
+          </form>
+          <div id="register-error" class="error-message"></div>
+        </div>
+      </section>
+
+      <section id="track-section" class="section">
+        <div class="card">
+          <h2>Complaint Tracking</h2>
+          <p class="muted">
+            Login to see your complaints, their status, and location on the
+            map.
+          </p>
+          <button id="track-login-btn" class="primary">
+            Login to View My Complaints
+          </button>
+        </div>
+      </section>
+
+      <section id="contact-section" class="section">
+        <div class="card">
+          <h2>Contact Information</h2>
+          <p>
+            For emergencies, please contact the municipal helpline at
+            <strong>1800-XXX-XXXX</strong>.
+          </p>
+          <p class="muted">
+            This portal is intended for non-emergency civic issues only.
+          </p>
+        </div>
+      </section>
+
+      <section id="user-dashboard-section" class="section">
+        <div class="dashboard-header">
+          <div>
+            <h2>Citizen Dashboard</h2>
+            <p id="user-greeting" class="muted"></p>
+          </div>
+          <div class="dashboard-actions">
+            <button id="user-new-complaint-btn" class="primary">
+              New Complaint
+            </button>
+            <button id="user-logout-btn" class="secondary">Logout</button>
+          </div>
+        </div>
+
+        <div class="dashboard-layout">
+          <div class="dashboard-main">
+            <div class="card">
+              <div class="card-header">
+                <h3>My Complaints</h3>
+                <div class="filters">
+                  <select id="user-filter-status">
+                    <option value="">All Statuses</option>
+                    <option value="Pending">Pending</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Resolved">Resolved</option>
+                  </select>
+                  <select id="user-filter-category">
+                    <option value="">All Categories</option>
+                    <option value="Garbage">Garbage</option>
+                    <option value="Pothole">Pothole</option>
+                    <option value="Water Leakage">Water Leakage</option>
+                    <option value="Streetlight">Streetlight</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  <button id="user-refresh-btn" class="secondary small">
+                    Refresh
+                  </button>
+                </div>
+              </div>
+              <div class="table-wrapper">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Category</th>
+                      <th>Description</th>
+                      <th>Status</th>
+                      <th>Created</th>
+                    </tr>
+                  </thead>
+                  <tbody id="user-complaints-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <aside class="dashboard-side">
+            <div class="card">
+              <h3>Notifications</h3>
+              <ul id="user-notifications" class="notification-list"></ul>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="admin-dashboard-section" class="section">
+        <div class="dashboard-header">
+          <div>
+            <h2>Administration Dashboard</h2>
+            <p id="admin-greeting" class="muted"></p>
+          </div>
+          <div class="dashboard-actions">
+            <button id="admin-logout-btn" class="secondary">Logout</button>
+          </div>
+        </div>
+
+        <div class="admin-grid">
+          <div class="card">
+            <h3>Complaint Summary</h3>
+            <div class="summary-grid">
+              <div class="summary-item">
+                <div class="summary-label">Total</div>
+                <div id="admin-total" class="summary-value">-</div>
+              </div>
+              <div class="summary-item">
+                <div class="summary-label">Pending</div>
+                <div id="admin-pending" class="summary-value">-</div>
+              </div>
+              <div class="summary-item">
+                <div class="summary-label">In Progress</div>
+                <div id="admin-in-progress" class="summary-value">-</div>
+              </div>
+              <div class="summary-item">
+                <div class="summary-label">Resolved</div>
+                <div id="admin-resolved" class="summary-value">-</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Complaint Trends</h3>
+            <div class="chart-wrapper">
+              <canvas id="trend-chart"></canvas>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3>All Complaints</h3>
+              <div class="filters">
+                <select id="admin-filter-status">
+                  <option value="">All Statuses</option>
+                  <option value="Pending">Pending</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Resolved">Resolved</option>
+                </select>
+                <select id="admin-filter-category">
+                  <option value="">All Categories</option>
+                  <option value="Garbage">Garbage</option>
+                  <option value="Pothole">Pothole</option>
+                  <option value="Water Leakage">Water Leakage</option>
+                  <option value="Streetlight">Streetlight</option>
+                  <option value="Other">Other</option>
+                </select>
+                <button id="admin-refresh-btn" class="secondary small">
+                  Refresh
+                </button>
+              </div>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Category</th>
+                    <th>User</th>
+                    <th>Status</th>
+                    <th>Location</th>
+                  <th>Assigned To</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-complaints-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>User Accounts</h3>
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-users-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div id="complaint-modal" class="modal-overlay hidden">
+        <div class="modal">
+          <div class="modal-header">
+            <h3 id="complaint-modal-title">New Complaint</h3>
+            <button id="complaint-modal-close" class="icon-button">✕</button>
+          </div>
+          <div class="modal-body">
+            <form id="complaint-form">
+              <div class="form-group">
+                <label for="complaint-category">Category</label>
+                <select id="complaint-category" required>
+                  <option value="">Select category</option>
+                  <option value="Garbage">Garbage</option>
+                  <option value="Pothole">Pothole</option>
+                  <option value="Water Leakage">Water Leakage</option>
+                  <option value="Streetlight">Streetlight</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="complaint-description">Description</label>
+                <textarea
+                  id="complaint-description"
+                  rows="4"
+                  required
+                ></textarea>
+              </div>
+              <div class="form-group">
+                <label for="complaint-image">Upload Image (optional)</label>
+                <input id="complaint-image" type="file" accept="image/*" />
+              </div>
+              <div class="form-group">
+                <label>Location</label>
+                <input
+                  id="complaint-location-text"
+                  type="text"
+                  placeholder="Landmark / address (optional)"
+                />
+                <div class="map-wrapper">
+                  <div id="complaint-map"></div>
+                  <div style="margin: 0.4rem 0;">
+                    <button id="use-current-location" class="secondary small">Use My Current Location</button>
+                  </div>
+                  <div class="map-help">
+                    Use the map to set location. If permitted, your current
+                    location is used as a starting point.
+                  </div>
+                </div>
+              </div>
+              <input id="complaint-latitude" type="hidden" />
+              <input id="complaint-longitude" type="hidden" />
+              <button type="submit" class="primary block">
+                Submit Complaint
+              </button>
+            </form>
+            <div id="complaint-error" class="error-message"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="admin-complaint-modal" class="modal-overlay hidden">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>Complaint Details</h3>
+            <button id="admin-complaint-close" class="icon-button">✕</button>
+          </div>
+          <div class="modal-body" id="admin-complaint-body"></div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="gov-footer">
+      <div class="container footer-inner">
+        <span>© Municipal Corporation - Civic Issue Reporting Portal</span>
+        <span class="muted">
+          For emergencies, contact local emergency services directly.
+        </span>
+      </div>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>

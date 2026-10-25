@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Official municipal portal to report civic issues, track complaints and access citizen services."
+    />
+    <title>Municipal Citizen Services &amp; Complaint Management Portal</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
+      integrity="sha256-DiMmxoaAcr7BWSdgxnKQQ8ruopYKK0bO5qIZKqxqv/A="
+      crossorigin="anonymous"
+    ></script>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+
+    <header class="gov-header">
+      <div class="container header-inner">
+        <button class="branding" data-route="home" aria-label="Go to the home page">
+          <span class="emblem" aria-hidden="true"></span>
+          <span class="branding-text">
+            <span class="gov-title">Municipal Corporation</span>
+            <span class="gov-subtitle">Citizen Services &amp; Complaints Portal</span>
+          </span>
+        </button>
+
+        <nav class="main-nav" aria-label="Primary">
+          <button class="nav-link" data-route="home">Home</button>
+          <button class="nav-link" data-route="complaints">Complaints</button>
+          <button class="nav-link" data-route="services">Services</button>
+          <button class="nav-link" data-route="transparency">Transparency</button>
+          <button class="nav-link" data-route="track">Track</button>
+          <button class="nav-link" data-route="contact">Contact</button>
+
+          <button class="nav-link" data-route="login" data-auth="guest">Login</button>
+          <button class="nav-link nav-cta" data-route="register" data-auth="guest">Register</button>
+
+          <button class="nav-link nav-cta" data-route="dashboard" data-auth="user" hidden>
+            Dashboard
+          </button>
+          <button class="nav-link" data-route="staff" data-auth="staff" hidden>Service Desk</button>
+          <button class="nav-link" data-route="admin" data-auth="admin" hidden>Administration</button>
+
+          <button class="nav-link nav-bell" data-action="open-notifications" data-auth="user" hidden>
+            Alerts <span class="nav-bell-count" id="notification-count" hidden>0</span>
+          </button>
+          <button class="nav-link" data-action="logout" data-auth="user" hidden>Logout</button>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main" class="container">
+      <!-- ============================ HOME ============================ -->
+      <section id="view-home" class="view">
+        <div class="hero">
+          <div class="hero-text">
+            <span class="pill">Official municipal portal</span>
+            <h1>Report civic issues. Track municipal services. See the results.</h1>
+            <p>
+              Use this portal to report problems such as potholes, garbage accumulation, water
+              leakages and streetlight failures. Every complaint receives a unique reference number,
+              is routed to the responsible department and can be tracked until it is resolved.
+            </p>
+            <div class="hero-actions">
+              <button class="primary" data-action="new-complaint">Submit a Complaint</button>
+              <button class="secondary" data-route="services">Browse Citizen Services</button>
+              <button class="secondary" data-route="transparency">Public Transparency Dashboard</button>
+            </div>
+          </div>
+          <div class="hero-stats" id="home-stats">
+            <div class="stat-card"><div class="stat-label">Loading figures</div><div class="stat-value">-</div></div>
+          </div>
+        </div>
+
+        <div class="section-heading">
+          <h2>Civic service categories</h2>
+          <p class="muted" id="home-category-note">
+            Each category is managed by the municipal corporation and contains the specific issue
+            types that citizens can report.
+          </p>
+        </div>
+        <div class="info-grid" id="home-categories">
+          <p class="loading-text">Loading service categories.</p>
+        </div>
+
+        <div class="home-grid">
+          <div class="card">
+            <div class="card-header">
+              <h3>Recently resolved complaints</h3>
+              <span class="muted" id="home-resolved-updated"></span>
+            </div>
+            <ul class="resolved-list" id="home-resolved">
+              <li class="empty-state">Loading recently resolved complaints.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Public notices</h3></div>
+            <ul class="notice-list" id="home-announcements">
+              <li class="empty-state">Loading public notices.</li>
+            </ul>
+            <div class="card-header" style="margin-top: 1rem">
+              <h3>Complaint statistics</h3>
+            </div>
+            <div class="chart-wrapper"><canvas id="home-trend-chart"></canvas></div>
+            <p class="map-help">Complaints received over the last six months.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================= COMPLAINTS ========================= -->
+      <section id="view-complaints" class="view">
+        <div class="dashboard-header">
+          <div>
+            <h2>Submit a Complaint</h2>
+            <p class="muted">
+              Provide as much detail as possible. Required fields are marked with an asterisk.
+              Priority is confirmed by the municipal staff before action is taken.
+            </p>
+          </div>
+          <div class="dashboard-actions">
+            <button class="secondary small" data-route="track">Track a complaint</button>
+          </div>
+        </div>
+
+        <div class="dashboard-layout">
+          <div class="dashboard-main">
+            <form id="complaint-form" class="card" novalidate>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="complaint-title">Complaint title *</label>
+                  <input
+                    id="complaint-title"
+                    name="title"
+                    type="text"
+                    maxlength="160"
+                    required
+                    placeholder="Short summary, e.g. Pothole near the bus stop"
+                  />
+                  <span class="field-error" data-error-for="title"></span>
+                </div>
+              </div>
+
+              <div class="form-row two">
+                <div class="form-group">
+                  <label for="complaint-category">Service category *</label>
+                  <select id="complaint-category" name="category_id" required>
+                    <option value="">Select a category</option>
+                  </select>
+                  <span class="field-error" data-error-for="category_id"></span>
+                </div>
+                <div class="form-group">
+                  <label for="complaint-subcategory">Issue type *</label>
+                  <select id="complaint-subcategory" name="subcategory_id" required disabled>
+                    <option value="">Select a category first</option>
+                  </select>
+                  <span class="field-error" data-error-for="subcategory_id"></span>
+                  <p class="map-help" id="subcategory-help"></p>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="complaint-description">Description *</label>
+                  <textarea
+                    id="complaint-description"
+                    name="description"
+                    rows="5"
+                    maxlength="5000"
+                    required
+                    placeholder="Describe the problem, how long it has existed and anything the field staff should know."
+                  ></textarea>
+                  <span class="field-error" data-error-for="description"></span>
+                </div>
+              </div>
+
+              <div class="form-row two">
+                <div class="form-group">
+                  <label for="complaint-location">Location or address *</label>
+                  <input
+                    id="complaint-location"
+                    name="location_text"
+                    type="text"
+                    maxlength="400"
+                    required
+                    placeholder="Landmark, street or locality"
+                  />
+                  <span class="field-error" data-error-for="location_text"></span>
+                </div>
+                <div class="form-group">
+                  <label for="complaint-ward">Ward / zone</label>
+                  <select id="complaint-ward" name="ward_id">
+                    <option value="">Not sure</option>
+                  </select>
+                  <p class="map-help">
+                    Ward is never guessed from the address. Select it if you know it, otherwise the
+                    corporation will assign the correct ward.
+                  </p>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="complaint-priority">Priority (your assessment)</label>
+                  <select id="complaint-priority" name="priority">
+                    <option value="">Use the default for this issue type</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical / safety risk</option>
+                  </select>
+                </div>
+              </div>
+
+              <fieldset class="fieldset">
+                <legend>Location pin (optional)</legend>
+                <p class="map-help">
+                  Click the map to place a pin, or use your device location. A pin helps the field
+                  team find the exact spot.
+                </p>
+                <div class="map-wrapper">
+                  <div id="complaint-map" role="application" aria-label="Complaint location map"></div>
+                </div>
+                <div class="map-controls">
+                  <button type="button" class="secondary small" data-action="use-my-location">
+                    Use my current location
+                  </button>
+                  <button type="button" class="secondary small" data-action="clear-pin">
+                    Clear pin
+                  </button>
+                  <span class="map-help mono" id="pin-readout">No pin placed.</span>
+                </div>
+                <input type="hidden" id="complaint-latitude" name="latitude" />
+                <input type="hidden" id="complaint-longitude" name="longitude" />
+              </fieldset>
+
+              <fieldset class="fieldset">
+                <legend>Photo and video evidence (optional)</legend>
+                <div class="form-row two">
+                  <div class="form-group">
+                    <label for="complaint-images">Photos (up to 3, max 8 MB each)</label>
+                    <input
+                      id="complaint-images"
+                      name="image"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      multiple
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="complaint-videos">Video (up to 2, max 25 MB each)</label>
+                    <input
+                      id="complaint-videos"
+                      name="video"
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime"
+                      multiple
+                    />
+                  </div>
+                </div>
+                <p class="map-help">
+                  Files are stored privately and are only visible to you and the municipal staff
+                  handling your complaint.
+                </p>
+              </fieldset>
+
+              <fieldset class="fieldset">
+                <legend>Contact details (optional)</legend>
+                <p class="map-help">
+                  These details are private. They are shared only with the department handling your
+                  complaint so staff can reach you if needed.
+                </p>
+                <div class="form-row three">
+                  <div class="form-group">
+                    <label for="complaint-contact-name">Your name</label>
+                    <input id="complaint-contact-name" name="contact_name" type="text" maxlength="120" />
+                  </div>
+                  <div class="form-group">
+                    <label for="complaint-contact-phone">Phone</label>
+                    <input id="complaint-contact-phone" name="contact_phone" type="text" maxlength="20" />
+                  </div>
+                  <div class="form-group">
+                    <label for="complaint-contact-email">Email</label>
+                    <input id="complaint-contact-email" name="contact_email" type="email" maxlength="160" />
+                  </div>
+                </div>
+              </fieldset>
+
+              <div id="duplicate-warning" class="duplicate-warning" hidden></div>
+
+              <div class="form-actions">
+                <button type="submit" class="primary" id="complaint-submit">Submit complaint</button>
+                <button type="button" class="secondary" data-action="check-duplicates">
+                  Check for similar complaints
+                </button>
+                <button type="reset" class="secondary" data-action="reset-complaint-form">Clear form</button>
+              </div>
+              <div id="complaint-form-error" class="error-message" role="alert"></div>
+            </form>
+          </div>
+
+          <div class="dashboard-side">
+            <div class="card" id="complaint-confirmation" hidden>
+              <div class="card-header"><h3>Complaint registered</h3></div>
+              <p class="reference-block">
+                Reference number
+                <strong class="mono" id="confirmation-reference"></strong>
+              </p>
+              <div id="complaint-confirmation-body"></div>
+            </div>
+
+            <div class="card">
+              <div class="card-header"><h3>Before you submit</h3></div>
+              <ul class="checklist">
+                <li>Describe one issue per complaint so it can be routed correctly.</li>
+                <li>Add a clear photo where it is safe to do so.</li>
+                <li>Place a map pin if you can, and give a landmark in the address.</li>
+                <li>Emergency or life-threatening situations must be reported on the emergency helpline.</li>
+              </ul>
+              <p class="map-help">
+                A complaint is never closed automatically. It can only be marked resolved by
+                authorised staff, with written resolution notes and optional photographic evidence.
+              </p>
+            </div>
+
+            <div class="card">
+              <div class="card-header"><h3>Complaint flow</h3></div>
+              <ol class="status-flow" id="status-flow"></ol>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="my-complaints-card">
+          <div class="card-header">
+            <h3>My complaints</h3>
+            <div class="dashboard-actions">
+              <button class="secondary small" data-action="refresh-my-complaints">Refresh</button>
+            </div>
+          </div>
+          <div class="filter-bar" id="my-complaints-filters">
+            <label class="sr-only" for="my-filter-status">Filter by status</label>
+            <select id="my-filter-status"><option value="">All statuses</option></select>
+            <label class="sr-only" for="my-filter-category">Filter by category</label>
+            <select id="my-filter-category"><option value="">All categories</option></select>
+            <label class="sr-only" for="my-filter-search">Search complaints</label>
+            <input id="my-filter-search" type="search" placeholder="Search reference or title" />
+            <button class="secondary small" data-action="apply-my-filters">Apply filters</button>
+          </div>
+          <div id="my-complaints-list">
+            <p class="loading-text">Sign in to see your complaints.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================== SERVICES ========================== -->
+      <section id="view-services" class="view">
+        <div class="section-heading">
+          <h2>Citizen Services</h2>
+          <p class="muted">
+            Information services, formal applications and civic complaints are clearly separated.
+            Where a service cannot be completed online, the official guidance and authorised link are
+            shown instead of a form.
+          </p>
+        </div>
+
+        <div class="filter-bar">
+          <label class="sr-only" for="service-filter-kind">Filter services</label>
+          <select id="service-filter-kind">
+            <option value="">All services</option>
+            <option value="information">Information services</option>
+            <option value="application">Online applications</option>
+            <option value="complaint">Civic complaints</option>
+          </select>
+          <label class="sr-only" for="service-search">Search services</label>
+          <input id="service-search" type="search" placeholder="Search a service or document" />
+        </div>
+
+        <div id="services-list">
+          <p class="loading-text">Loading services.</p>
+        </div>
+
+        <div class="home-grid">
+          <div class="card">
+            <div class="card-header"><h3>Municipal offices</h3></div>
+            <div id="services-offices"><p class="loading-text">Loading offices.</p></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Notices and announcements</h3></div>
+            <ul class="notice-list" id="services-announcements">
+              <li class="empty-state">Loading notices.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================== TRANSPARENCY ======================== -->
+      <section id="view-transparency" class="view">
+        <div class="section-heading">
+          <h2>Public Transparency Dashboard</h2>
+          <p class="muted">
+            All figures below are computed live from municipal complaint records. Personal details,
+            exact addresses and private attachments are never published. Small breakdown groups are
+            suppressed so individuals cannot be identified.
+          </p>
+        </div>
+
+        <div class="summary-grid" id="transparency-totals">
+          <p class="loading-text">Loading figures.</p>
+        </div>
+
+        <div class="chart-grid">
+          <div class="card">
+            <div class="card-header"><h3>Complaints by category</h3></div>
+            <div class="chart-wrapper tall"><canvas id="transparency-category-chart"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Complaints by status</h3></div>
+            <div class="chart-wrapper tall"><canvas id="transparency-status-chart"></canvas></div>
+          </div>
+        </div>
+
+        <div class="home-grid">
+          <div class="card">
+            <div class="card-header">
+              <h3>Complaints by ward</h3>
+              <span class="muted" id="transparency-ward-note"></span>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr><th scope="col">Ward</th><th scope="col">Complaints</th></tr>
+                </thead>
+                <tbody id="transparency-ward-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Recently resolved</h3></div>
+            <div class="table-wrapper">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Reference</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">Resolved</th>
+                  </tr>
+                </thead>
+                <tbody id="transparency-resolved-body"></tbody>
+              </table>
+            </div>
+            <p class="map-help" id="transparency-generated"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================== TRACK =========================== -->
+      <section id="view-track" class="view">
+        <div class="section-heading">
+          <h2>Track a Complaint or Application</h2>
+          <p class="muted">
+            Enter the reference number from your acknowledgement. Citizens can also sign in to see all
+            of their records in the dashboard.
+          </p>
+        </div>
+
+        <div class="card auth-card">
+          <div class="form-group">
+            <label for="track-reference">Reference number</label>
+            <input
+              id="track-reference"
+              type="text"
+              placeholder="CMP-2026-000123 or APP-2026-000045"
+              autocomplete="off"
+            />
+          </div>
+          <button class="primary block" data-action="track-reference">Look up record</button>
+          <div id="track-result" class="track-result"></div>
+        </div>
+      </section>
+
+      <!-- ====================== LOGIN / REGISTER ====================== -->
+      <section id="view-login" class="view">
+        <div class="auth-layout">
+          <div class="card auth-card">
+            <div class="card-header">
+              <h3 id="login-heading">Citizen sign in</h3>
+            </div>
+            <nav class="tab-bar auth-tabs" id="login-tabs" aria-label="Choose the type of account"></nav>
+            <p class="muted small" id="login-hint"></p>
+            <form id="login-form" novalidate>
+              <div class="form-group">
+                <label for="login-email">Email address</label>
+                <input id="login-email" name="email" type="email" required autocomplete="email" />
+              </div>
+              <div class="form-group">
+                <label for="login-password">Password</label>
+                <input
+                  id="login-password"
+                  name="password"
+                  type="password"
+                  required
+                  autocomplete="current-password"
+                />
+              </div>
+              <button type="submit" class="primary block" id="login-submit">Sign in</button>
+              <div id="login-error" class="error-message" role="alert"></div>
+            </form>
+            <p class="muted" style="margin-top: 1rem">
+              New to the portal?
+              <button class="link-button" data-route="register">Create a citizen account</button>
+            </p>
+          </div>
+
+          <div class="card auth-defaults" id="login-defaults-card" hidden>
+            <div class="card-header">
+              <h3>Default sign-in accounts</h3>
+            </div>
+            <p class="map-help">
+              These accounts are created the first time the portal starts, so you can sign in without
+              registering. A password is only shown while it is still the configured default — change it
+              under Administration &rarr; Staff accounts and it disappears from this list.
+            </p>
+            <div id="login-defaults"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-register" class="view">
+        <div class="card auth-card">
+          <div class="card-header"><h3>Create a citizen account</h3></div>
+          <form id="register-form" novalidate>
+            <div class="form-group">
+              <label for="register-name">Full name</label>
+              <input id="register-name" name="name" type="text" required maxlength="120" />
+            </div>
+            <div class="form-group">
+              <label for="register-email">Email address</label>
+              <input id="register-email" name="email" type="email" required autocomplete="email" />
+            </div>
+            <div class="form-group">
+              <label for="register-phone">Phone (optional)</label>
+              <input id="register-phone" name="phone" type="text" maxlength="20" />
+            </div>
+            <div class="form-group">
+              <label for="register-ward">Ward (optional)</label>
+              <select id="register-ward" name="ward_id"><option value="">Not sure</option></select>
+            </div>
+            <div class="form-group">
+              <label for="register-password">Password (minimum 6 characters)</label>
+              <input
+                id="register-password"
+                name="password"
+                type="password"
+                required
+                minlength="6"
+                autocomplete="new-password"
+              />
+            </div>
+            <button type="submit" class="primary block" id="register-submit">Create account</button>
+            <div id="register-error" class="error-message" role="alert"></div>
+          </form>
+        </div>
+      </section>
+
+      <!-- ========================= DASHBOARD ========================= -->
+      <section id="view-dashboard" class="view">
+        <div class="dashboard-header">
+          <div>
+            <h2 id="dashboard-title">My dashboard</h2>
+            <p class="muted" id="dashboard-subtitle"></p>
+          </div>
+          <div class="dashboard-actions">
+            <button class="secondary small" data-action="open-profile">My profile</button>
+            <button class="secondary small" data-action="refresh-dashboard">Refresh</button>
+          </div>
+        </div>
+
+        <div class="summary-grid" id="dashboard-summary"></div>
+
+        <nav class="tab-bar" id="dashboard-tabs" aria-label="Dashboard sections"></nav>
+
+        <div id="dashboard-content"></div>
+      </section>
+
+      <!-- ======================== SERVICE DESK ======================== -->
+      <section id="view-staff" class="view">
+        <div class="dashboard-header">
+          <div>
+            <h2>Municipal service desk</h2>
+            <p class="muted" id="staff-subtitle">
+              Review, assign and progress complaints within your authorised scope.
+            </p>
+          </div>
+          <div class="dashboard-actions">
+            <button class="secondary small" data-action="refresh-staff">Refresh</button>
+          </div>
+        </div>
+
+        <div class="summary-grid" id="staff-summary"></div>
+
+        <nav class="tab-bar" id="staff-tabs" aria-label="Service desk sections"></nav>
+
+        <div id="staff-content"></div>
+      </section>
+
+      <!-- ======================== ADMINISTRATION ======================== -->
+      <section id="view-admin" class="view">
+        <div class="dashboard-header">
+          <div>
+            <h2>Administration</h2>
+            <p class="muted">
+              Configure the service taxonomy, routing, staff accounts, service targets and public
+              content. Historical complaints are never altered by configuration changes.
+            </p>
+          </div>
+          <div class="dashboard-actions">
+            <button class="secondary small" data-action="export-complaints">Export complaints (CSV)</button>
+            <button class="secondary small" data-action="refresh-admin">Refresh</button>
+          </div>
+        </div>
+
+        <nav class="tab-bar" id="admin-tabs" aria-label="Administration sections"></nav>
+
+        <div id="admin-content"></div>
+      </section>
+
+      <!-- ========================== CONTACT ========================== -->
+      <section id="view-contact" class="view">
+        <div class="section-heading">
+          <h2>Contact the Municipal Corporation</h2>
+          <p class="muted">
+            For civic complaints please use this portal so your request is recorded and tracked. The
+            helplines below are for general enquiries.
+          </p>
+        </div>
+
+        <div class="home-grid">
+          <div class="card">
+            <div class="card-header"><h3>Head office</h3></div>
+            <div class="detail-field"><span class="detail-label">Address:</span> Municipal Corporation Head Office, Main Administrative Building</div>
+            <div class="detail-field"><span class="detail-label">General enquiries:</span> 1800-000-000 (toll free)</div>
+            <div class="detail-field"><span class="detail-label">Complaint helpline:</span> 1800-000-111</div>
+            <div class="detail-field"><span class="detail-label">Emergency services:</span> 112</div>
+            <div class="detail-field"><span class="detail-label">Office hours:</span> Monday to Saturday, 10:00 to 17:30 (closed on public holidays)</div>
+            <p class="map-help">
+              Emergency and life-threatening situations must be reported to the emergency services
+              immediately and not through this portal.
+            </p>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Municipal offices</h3></div>
+            <div id="contact-offices"><p class="loading-text">Loading offices.</p></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="gov-footer">
+      <div class="container footer-inner">
+        <span>Municipal Corporation &middot; Citizen Services &amp; Complaint Management Portal</span>
+        <span>
+          <button class="link-button light" data-route="transparency">Transparency</button>
+          &middot;
+          <button class="link-button light" data-route="contact">Contact</button>
+        </span>
+      </div>
+    </footer>
+
+    <!-- ========================= CIVILBOT ========================= -->
+    <div class="chatbot-widget" id="chatbot-widget">
+      <button class="chatbot-toggle" data-action="toggle-chatbot" aria-label="Open CivilBot, the municipal help assistant">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+      </button>
+      <div class="chatbot-panel hidden" id="chatbot-panel" role="dialog" aria-label="CivilBot">
+        <div class="chatbot-header">
+          <h3>CivilBot</h3>
+          <button class="icon-button" data-action="toggle-chatbot" aria-label="Close CivilBot">&times;</button>
+        </div>
+        <div class="chatbot-messages" id="chatbot-messages">
+          <div class="chatbot-message bot">
+            <div class="message-content">Hello, I am CivilBot. Ask me about reporting a civic issue, tracking a complaint, or the services available on this portal.</div>
+          </div>
+        </div>
+        <form class="chatbot-input-area" id="chatbot-form">
+          <label class="sr-only" for="chatbot-input">Type your question for CivilBot</label>
+          <input id="chatbot-input" type="text" placeholder="Ask CivilBot a question" autocomplete="off" />
+          <button type="submit" class="chatbot-send-btn">Send</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <div id="modal-root"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
